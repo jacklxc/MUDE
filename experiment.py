@@ -78,6 +78,7 @@ def train(epoch, X_train, mask_train, Y_train, batch_size, seq_len, ntokens, cha
         mask = mask.to(device)
         Y = Y.to(device)
         optimizer.zero_grad()
+        
         if args.num == 1:
             output, hidden = model(X, mask)
             loss = criterion(output.view(-1, ntokens), Y.view(-1))
@@ -289,10 +290,11 @@ def main():
     global model
 
     if args.num==3:
-    model = model.MUDE(char_vocab_size, d_emb=args.d_emb, h=args.h, n=args.n, d_hidden=args.d_hidden, 
+        model = model.MUDE(char_vocab_size, d_emb=args.d_emb, h=args.h, n=args.n, d_hidden=args.d_hidden, 
             vocab_size=len(vocab), dropout=0.01)
-    model.to(device)
-
+        #model = nn.DataParallel(model)
+        model.to(device)
+        
     global criterion
     criterion = nn.NLLLoss() 
     global seq_criterion
