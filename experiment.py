@@ -212,17 +212,14 @@ def check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_to
 
     try:
         precision = TP / (TP+FP)
-        print("Precision:",precision)
-
         recall = TP / (TP+FN)
-        print("Recall:",recall)
         beta = 0.5
-
-        print("Accuracy:", (TP + TN)/(TP+FP+FN+TN))
-        print("F 0.5:", (1+beta**2) * (precision * recall) / (beta**2 * precision + recall) )
+        accuracy = (TP + TN)/(TP+FP+FN+TN)
+        f05 = (1+beta**2) * (precision * recall) / (beta**2 * precision + recall)
+        return precision, recall, accuracy, f05
     except ZeroDivisionError:
         print("Division by zero")
-    return
+        return 0, 0, 0, 0
 
 def repackage_hidden(h):
     if isinstance(h, torch.Tensor):
@@ -260,8 +257,7 @@ def main():
 
 
     base_path = os.path.dirname(os.path.realpath(__file__))
-    text_data_dir = os.path.join(base_path,'./data/')
-    data_dir = os.path.join(base_path,'data/')
+    text_data_dir = os.path.join(base_path,'../misspelling/data/')
     output_dir = os.path.join(base_path,'output/')
 
 
@@ -269,26 +265,26 @@ def main():
     ###########      DATA PREPARE              ###########
     ######################################################
 
-    train_file = 'debug_label.txt'
-    val_file = 'debug_label.txt'
-    test_file = 'debug_label.txt'
+    train_file = 'train_correct.txt'
+    val_file = 'dev_correct.txt'
+    test_file = 'test_correct.txt'
 
     vocab, id2vocab = {'<eos>':0}, {0:'<eos>'}
     _, vocab, id2vocab = vectorize_data(text_data_dir + train_file, vocab, id2vocab)
-    train_noise_filename = text_data_dir + 'debug.txt'
+    train_noise_filename = text_data_dir + 'train.txt'
     train_noise_tokens = open(train_noise_filename).read().replace('\n', ' <eos> ').strip().split()
     train_filename = text_data_dir + train_file
     train_tokens = open(train_filename).read().replace('\n', ' <eos> ').strip().split()
 
     _, vocab, id2vocab = vectorize_data(text_data_dir + val_file, vocab, id2vocab)
-    valid_noise_filename = text_data_dir + 'debug.txt'
+    valid_noise_filename = text_data_dir + 'dev.txt'
     valid_noise_tokens = open(valid_noise_filename).read().replace('\n', ' <eos> ').strip().split()
     valid_filename = text_data_dir + val_file
     valid_tokens = open(valid_filename).read().replace('\n', ' <eos> ').strip().split()
 
 
     _, vocab, id2vocab = vectorize_data(text_data_dir + test_file, vocab, id2vocab)
-    test_noise_filename = text_data_dir + 'debug.txt'
+    test_noise_filename = text_data_dir + 'test.txt'
     test_noise_tokens = open(test_noise_filename).read().replace('\n', ' <eos> ').strip().split()
     test_filename = text_data_dir + test_file
     test_tokens = open(test_filename).read().replace('\n', ' <eos> ').strip().split()
@@ -296,14 +292,10 @@ def main():
 
     alph = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,:;'*!?`$%&(){}[]-/\@_#" 
     seq_len = args.seq_len
-    print ('Process train data')
     X_train, mask_train, Y_train = make_input_data(train_noise_tokens, train_tokens, seq_len, alph, vocab)
-    print ('Process valid data')
     X_valid, mask_valid, Y_valid = make_input_data(valid_noise_tokens, valid_tokens, seq_len, alph, vocab)
-    print ('Process test data')
     X_test, mask_test, Y_test = make_input_data(test_noise_tokens, test_tokens, seq_len, alph, vocab)
         
-
     #X_train, mask_train, Y_train = X_train.to(device), mask_train.to(device), Y_train.to(device)
     X_valid, mask_valid, Y_valid = X_valid.to(device), mask_valid.to(device), Y_valid.to(device)
     X_test, mask_test, Y_test = X_test.to(device), mask_test.to(device), Y_test.to(device)
@@ -345,24 +337,24 @@ def main():
     for epoch in range(1, args.epochs+1):
         epoch_start_time = time.time()
         train(epoch, X_train, mask_train, Y_train, args.batch_size, args.seq_len, len(vocab), char_vocab_size, args)
-        val_acc = evaluate(X_valid, mask_valid, Y_valid, args.batch_size, args.seq_len, len(vocab), args)
-        test_acc = evaluate(X_test, mask_test, Y_test, args.batch_size, args.seq_len, len(vocab), args)
+        #val_acc = evaluate(X_valid, mask_valid, Y_valid, args.batch_size, args.seq_len, len(vocab), args)
+        #test_acc = evaluate(X_test, mask_test, Y_test, args.batch_size, args.seq_len, len(vocab), args)
+        val_precision, val_recall, val_acc, val_f05 = check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
+        test_precision, test_recall, test_acc, test_f05 = check_performance(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
         message = ('-' * 89
-                +  '\n| end of epoch {:3d} | time: {:5.2f}s | valid acc {:5.2f} | '.format(
-                    epoch, (time.time() - epoch_start_time), val_acc)
-                +  '\n| end of epoch {:3d} | time: {:5.2f}s | test  acc {:5.2f} |\n'.format(
-                    epoch, (time.time() - epoch_start_time), test_acc) 
+                +  '\n| end of epoch {:3d} | time: {:5.2f}s | valid precision {:5.2f} | valid recall {:5.2f} | valid accuracy {:5.2f} | valid F0.5 {:5.2f} | '.format(
+                    epoch, (time.time() - epoch_start_time), val_precision, val_recall, val_acc, val_f05)
+                +  '\n| end of epoch {:3d} | time: {:5.2f}s | test precision {:5.2f} | test recall {:5.2f} | test accuracy {:5.2f} | test F0.5 {:5.2f} | '.format(
+                    epoch, (time.time() - epoch_start_time), test_precision, test_recall, test_acc, test_f05)
                 + '-' * 89)
         output_s(message, message_filename)
 
         # Save the model if the validation loss is the best we've seen so far.
-        if val_acc > best_acc:
+        if val_f05 > best_acc:
             save(model, model_filename)
-            best_acc = val_acc
+            best_acc = val_f05
         #check(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
-        check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
 
-    check_performance(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
 
 if __name__=='__main__':
     main()
