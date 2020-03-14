@@ -20,7 +20,7 @@ def output_s(message, save_filename):
 
 def vectorize_data(filename, vocab, id2vocab):
     # words are considered in a document-level 
-    words = open(filename).read().replace('\n', '<eos>').strip().split()
+    words = open(filename).read().replace('\n', ' <eos> ').strip().split()
     dataset = np.ndarray((len(words),), dtype=np.int32)
     for i, word in enumerate(words):
         if word not in vocab:
@@ -31,10 +31,9 @@ def vectorize_data(filename, vocab, id2vocab):
         dataset[i] = vocab[word]
     return dataset, vocab, id2vocab
 
-def make_input_data(noise_data, data, seq_len, alph, noise_type, vocab): # training, dev, or test
+def make_input_data(noise_data, data, seq_len, alph, vocab): # training, dev, or test
     max_char_num = 20
-    if 'INS' in noise_type or noise_type == 'NOISE_ALL':
-        max_char_num += 1
+
     X_vec = np.zeros((int(len(noise_data)/seq_len), seq_len, max_char_num), dtype=np.int32)
     mask_vec = np.zeros((int(len(noise_data)/seq_len), seq_len, max_char_num, max_char_num), dtype=np.int32)
     Y_vec = np.zeros((int(len(data)/seq_len), seq_len, 1), dtype=np.int32)
@@ -141,7 +140,7 @@ def check(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2voc
     X_valid: seq_len, seq_len, d_input
     Y_valid: seq_len, seq_len, 1
     """
-    n = 2
+    n = 3
     srcs = list(zip(*[iter(valid_noise_tokens)]*seq_len))[:n]
 
     for j in range(n):
@@ -163,6 +162,67 @@ def check(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2voc
         print('PRD: ', pred_j)
     return
 
+def remove_elements(array, element):
+    to_return = []
+    for foo in array:
+        if foo != element:
+            to_return.append(foo)
+    return to_return
+
+def check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, ntokens, seq_len, args):
+    """
+    X_valid: seq_len, seq_len, d_input
+    Y_valid: seq_len, seq_len, 1
+    """
+    stop_token = '<eos>'
+    srcs = list(zip(*[iter(valid_noise_tokens)]*seq_len))
+
+    TP = 0
+    FP = 0
+    FN = 0
+    TN = 0
+
+    for j in range(len(srcs) - 1):
+        src_j = " ".join(srcs[j])
+        src_tokens = remove_elements(srcs[j],stop_token)
+        x_raw, mask_raw, y_raw = X_valid[np.array([j])], mask_valid[np.array([j])], Y_valid[np.array([j])] # "np.array" to make the dim 3
+        ref_j = decode_word(y_raw.view(-1), id2vocab)
+        ref_tokens = remove_elements(ref_j.split(), stop_token)
+        if args.num == 1:
+            output, hidden = model(x_raw, mask_raw)
+        if args.num in [2, 3]:
+            output, hidden, seq_output = model(x_raw, mask_raw)
+        output = output.view(-1, ntokens)
+        _, predicted = torch.max(output.data, 1)
+        pred_j = decode_word(predicted, id2vocab)
+        pred_tokens = remove_elements(pred_j.split(), stop_token)
+
+        for token, gold, pred in zip(src_tokens, ref_tokens, pred_tokens):
+            if token!=pred:
+                if pred==gold:
+                    TP += 1
+                else:
+                    FP += 1
+
+            else:
+                if pred==gold:
+                    TN += 1
+                else:
+                    FN += 1
+
+    try:
+        precision = TP / (TP+FP)
+        print("Precision:",precision)
+
+        recall = TP / (TP+FN)
+        print("Recall:",recall)
+        beta = 0.5
+
+        print("Accuracy:", (TP + TN)/(TP+FP+FN+TN))
+        print("F 0.5:", (1+beta**2) * (precision * recall) / (beta**2 * precision + recall) )
+    except ZeroDivisionError:
+        print("Division by zero")
+    return
 
 def repackage_hidden(h):
     if isinstance(h, torch.Tensor):
@@ -180,9 +240,7 @@ def main():
         help='learning minibatch size')
     parser.add_argument('--betapoint', '-c', type=int, default=10,
         help='betapoint for decrease beta')
-    parser.add_argument('--noise_type', '-n', default="PER")
     parser.add_argument('--seed', type=int, default=1111)
-    parser.add_argument('--renew_data', action='store_true')
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--d_emb', type=int, default=512)
@@ -194,11 +252,10 @@ def main():
 
 
     global device
-    device = torch.device("cuda")
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
     args = parser.parse_args()
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    noise_type = args.noise_type
     lr = args.lr
 
 
@@ -212,66 +269,40 @@ def main():
     ###########      DATA PREPARE              ###########
     ######################################################
 
-    if noise_type != 'NOISE_ALL':
-        train_file = 'ptb.train.txt'
-        val_file = 'ptb.valid.txt'
-        test_file = 'ptb.test.txt'
-    else:
-        train_file = 'ptb.train.all.txt'
-        val_file = 'ptb.valid.all.txt'
-        test_file = 'ptb.test.all.txt'
-    vocab, id2vocab = {}, {}
-    train_vec, vocab, id2vocab = vectorize_data(text_data_dir + 'ptb.train.txt', vocab, id2vocab)
-    train_noise_filename = text_data_dir + 'ptb.train.' + noise_type + '.txt'
-    train_noise_tokens = open(train_noise_filename).read().strip().split()
+    train_file = 'debug_label.txt'
+    val_file = 'debug_label.txt'
+    test_file = 'debug_label.txt'
+
+    vocab, id2vocab = {'<eos>':0}, {0:'<eos>'}
+    _, vocab, id2vocab = vectorize_data(text_data_dir + train_file, vocab, id2vocab)
+    train_noise_filename = text_data_dir + 'debug.txt'
+    train_noise_tokens = open(train_noise_filename).read().replace('\n', ' <eos> ').strip().split()
     train_filename = text_data_dir + train_file
     train_tokens = open(train_filename).read().replace('\n', ' <eos> ').strip().split()
 
-    valid_vec, vocab, id2vocab = vectorize_data(text_data_dir + 'ptb.valid.txt', vocab, id2vocab)
-    valid_noise_filename = text_data_dir + 'ptb.valid.' + noise_type + '.txt'
-    valid_noise_tokens = open(valid_noise_filename).read().strip().split()
+    _, vocab, id2vocab = vectorize_data(text_data_dir + val_file, vocab, id2vocab)
+    valid_noise_filename = text_data_dir + 'debug.txt'
+    valid_noise_tokens = open(valid_noise_filename).read().replace('\n', ' <eos> ').strip().split()
     valid_filename = text_data_dir + val_file
     valid_tokens = open(valid_filename).read().replace('\n', ' <eos> ').strip().split()
 
 
-    test_vec, vocab, id2vocab = vectorize_data(text_data_dir + 'ptb.test.txt', vocab, id2vocab)
-    test_noise_filename = text_data_dir + 'ptb.test.' + noise_type + '.txt'
-    test_noise_tokens = open(test_noise_filename).read().strip().split()
+    _, vocab, id2vocab = vectorize_data(text_data_dir + test_file, vocab, id2vocab)
+    test_noise_filename = text_data_dir + 'debug.txt'
+    test_noise_tokens = open(test_noise_filename).read().replace('\n', ' <eos> ').strip().split()
     test_filename = text_data_dir + test_file
     test_tokens = open(test_filename).read().replace('\n', ' <eos> ').strip().split()
-    
 
 
     alph = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,:;'*!?`$%&(){}[]-/\@_#" 
-
-    if args.renew_data:
-        seq_len = args.seq_len
-        print ('Process train data')
-        X_train, mask_train, Y_train = make_input_data(train_noise_tokens, train_tokens, seq_len, alph, noise_type, vocab)
-        print ('Process valid data')
-        X_valid, mask_valid, Y_valid = make_input_data(valid_noise_tokens, valid_tokens, seq_len, alph, noise_type, vocab)
-        print ('Process test data')
-        X_test, mask_test, Y_test = make_input_data(test_noise_tokens, test_tokens, seq_len, alph, noise_type, vocab)
+    seq_len = args.seq_len
+    print ('Process train data')
+    X_train, mask_train, Y_train = make_input_data(train_noise_tokens, train_tokens, seq_len, alph, vocab)
+    print ('Process valid data')
+    X_valid, mask_valid, Y_valid = make_input_data(valid_noise_tokens, valid_tokens, seq_len, alph, vocab)
+    print ('Process test data')
+    X_test, mask_test, Y_test = make_input_data(test_noise_tokens, test_tokens, seq_len, alph, vocab)
         
-        torch.save(X_train, data_dir + 'X_train_{}.pt'.format(noise_type))
-        torch.save(mask_train, data_dir + 'mask_train_{}.pt'.format(noise_type))
-        torch.save(Y_train, data_dir + 'Y_train_{}.pt'.format(noise_type))
-        torch.save(X_valid, data_dir + 'X_valid_{}.pt'.format(noise_type))
-        torch.save(mask_valid, data_dir + 'mask_valid_{}.pt'.format(noise_type))
-        torch.save(Y_valid, data_dir + 'Y_valid_{}.pt'.format(noise_type))
-        torch.save(X_test, data_dir + 'X_test_{}.pt'.format(noise_type))
-        torch.save(mask_test, data_dir + 'mask_test_{}.pt'.format(noise_type))
-        torch.save(Y_test, data_dir + 'Y_test_{}.pt'.format(noise_type))
-    else:
-        X_train = torch.load(data_dir + 'X_train_{}.pt'.format(noise_type))
-        mask_train = torch.load(data_dir + 'mask_train_{}.pt'.format(noise_type))
-        Y_train = torch.load(data_dir + 'Y_train_{}.pt'.format(noise_type))
-        X_valid = torch.load(data_dir + 'X_valid_{}.pt'.format(noise_type))
-        mask_valid = torch.load(data_dir + 'mask_valid_{}.pt'.format(noise_type))
-        Y_valid = torch.load(data_dir + 'Y_valid_{}.pt'.format(noise_type))
-        X_test = torch.load(data_dir + 'X_test_{}.pt'.format(noise_type))
-        mask_test = torch.load(data_dir + 'mask_test_{}.pt'.format(noise_type))
-        Y_test = torch.load(data_dir + 'Y_test_{}.pt'.format(noise_type))
 
     #X_train, mask_train, Y_train = X_train.to(device), mask_train.to(device), Y_train.to(device)
     X_valid, mask_valid, Y_valid = X_valid.to(device), mask_valid.to(device), Y_valid.to(device)
@@ -279,7 +310,7 @@ def main():
     ######################################################
     ###########    MODEL AND TRAINING CONFIG   ###########
     ######################################################
-    model_name = "{}_beta_{}_emb_{}_h_{}_hidden_{}_n_{}_lr_{}_bs_{}_check_{}".format(args.noise_type, args.beta, args.d_emb, 
+    model_name = "beta_{}_emb_{}_h_{}_hidden_{}_n_{}_lr_{}_bs_{}_check_{}".format(args.beta, args.d_emb, 
                                                                         args.h, args.d_hidden, args.n, args.lr, args.batch_size, args.betapoint)
     global message_filename 
     message_filename = output_dir + 'r_' + model_name + '.txt'
@@ -312,7 +343,6 @@ def main():
 
     best_acc = 0
     for epoch in range(1, args.epochs+1):
-        check(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
         epoch_start_time = time.time()
         train(epoch, X_train, mask_train, Y_train, args.batch_size, args.seq_len, len(vocab), char_vocab_size, args)
         val_acc = evaluate(X_valid, mask_valid, Y_valid, args.batch_size, args.seq_len, len(vocab), args)
@@ -329,16 +359,10 @@ def main():
         if val_acc > best_acc:
             save(model, model_filename)
             best_acc = val_acc
+        #check(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
+        check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
 
-    ######################################################
-    ###########      START TRAINING            ###########
-    ######################################################
-    check(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
-    test_acc = evaluate(X_test, mask_test, Y_test, args.batch_size, args.seq_len, len(vocab), args)
-    message = ('=' * 89
-            + '\n| End of training | test acc {:5.2f}'.format(test_acc)
-            + "\n" +  '=' * 89)
-    output_s(message, message_filename)
+    check_performance(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
 
 if __name__=='__main__':
     main()
