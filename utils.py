@@ -32,11 +32,10 @@ def vec_char(w, alph, max_char_num):
     elif hasnum(w):
         bin_all[0]=len(alph)+3
     else:
-        for i in range(len(w)):
+        for i in range(min(len(w),max_char_num-1)):
             try:
                 bin_all[i+1] = alph.index(w[i])
-                mask_all[i+1] = 1
             except ValueError:
-                print(w)
-                raise
+                bin_all[i+1] = len(alph)+2
+            mask_all[i+1] = 1
     return np.array(bin_all), np.array(mask_all)
