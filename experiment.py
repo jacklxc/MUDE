@@ -312,7 +312,7 @@ def main():
     if args.num==3:
         model = model.MUDE(char_vocab_size, d_emb=args.d_emb, h=args.h, n=args.n, d_hidden=args.d_hidden, 
             vocab_size=len(vocab), dropout=0.01)
-        #model = nn.DataParallel(model)
+        model = nn.DataParallel(model)
         model.to(device)
         
     global criterion
