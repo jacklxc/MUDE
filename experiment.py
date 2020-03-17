@@ -355,9 +355,9 @@ def main():
                         val_precision, val_recall, val_acc, val_f05 = check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
                         test_precision, test_recall, test_acc, test_f05 = check_performance(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
                         message = ('-' * 89
-                                +  '\n| end of epoch {:3d} | time: {:5.2f}s | valid precision {:5.2f} | valid recall {:5.2f} | valid accuracy {:5.2f} | valid F0.5 {:5.2f} | '.format(
+                                +  '\n| end of epoch {:3d} | time: {:5.4f}s | valid precision {:5.4f} | valid recall {:5.4f} | valid accuracy {:5.4f} | valid F0.5 {:5.4f} | '.format(
                                     epoch, (time.time() - epoch_start_time), val_precision, val_recall, val_acc, val_f05)
-                                +  '\n| end of epoch {:3d} | time: {:5.2f}s | test precision {:5.2f} | test recall {:5.2f} | test accuracy {:5.2f} | test F0.5 {:5.2f} | '.format(
+                                +  '\n| end of epoch {:3d} | time: {:5.4f}s | test precision {:5.4f} | test recall {:5.4f} | test accuracy {:5.4f} | test F0.5 {:5.4f} | '.format(
                                     epoch, (time.time() - epoch_start_time), test_precision, test_recall, test_acc, test_f05)
                                 + '-' * 89)
                         output_s(message, message_filename)
