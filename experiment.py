@@ -166,11 +166,19 @@ def remove_elements(array, element):
             to_return.append(foo)
     return to_return
 
+def scores(TP, FP, FN, TN, beta = 0.5):
+    precision = TP / (TP+FP)
+    recall = TP / (TP+FN)
+    accuracy = (TP + TN)/(TP+FP+FN+TN)
+    F_score = (1+beta**2) * (precision * recall) / (beta**2 * precision + recall)
+    return precision, recall, accuracy, F_score
+
 def check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, ntokens, seq_len, args):
     """
     X_valid: seq_len, seq_len, d_input
     Y_valid: seq_len, seq_len, 1
     """
+    wordVocab = {v:k for k,v in id2vocab.items()}
     stop_token = '<eos>'
     srcs = list(zip(*[iter(valid_noise_tokens)]*seq_len))
 
@@ -178,6 +186,16 @@ def check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_to
     FP = 0
     FN = 0
     TN = 0
+
+    real_TP = 0
+    real_FP = 0
+    real_FN = 0
+    real_TN = 0
+
+    non_TP = 0
+    non_FP = 0
+    non_FN = 0
+    non_TN = 0
 
     for j in range(len(srcs) - 1):
         src_j = " ".join(srcs[j])
@@ -198,22 +216,38 @@ def check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_to
             if token!=pred:
                 if pred==gold:
                     TP += 1
+                    if token in wordVocab:
+                        real_TP += 1
+                    else:
+                        non_TP += 1
                 else:
                     FP += 1
-
+                    if token in wordVocab:
+                        real_FP += 1
+                    else:
+                        non_FP += 1
             else:
                 if pred==gold:
                     TN += 1
+                    if token in wordVocab:
+                        real_TN += 1
+                    else:
+                        non_TN += 1
                 else:
                     FN += 1
+                    if token in wordVocab:
+                        real_FN += 1
+                    else:
+                        non_FN += 1
 
     try:
-        precision = TP / (TP+FP)
-        recall = TP / (TP+FN)
-        beta = 0.5
-        accuracy = (TP + TN)/(TP+FP+FN+TN)
-        f05 = (1+beta**2) * (precision * recall) / (beta**2 * precision + recall)
-        return precision, recall, accuracy, f05
+        precision, recall, accuracy, F_score = scores(TP, FP, FN, TN, beta = 0.5)
+
+        real_precision, real_recall, real_accuracy, real_F_score = scores(real_TP, real_FP, real_FN, real_TN, beta = 0.5)
+
+        non_precision, non_recall, non_accuracy, non_F_score = scores(non_TP, non_FP, non_FN, non_TN, beta = 0.5)
+
+        return precision, recall, accuracy, F_score, real_precision, real_recall, real_accuracy, real_F_score, non_precision, non_recall, non_accuracy, non_F_scores
     except ZeroDivisionError:
         print("Division by zero")
         return 0, 0, 0, 0
@@ -352,13 +386,23 @@ def main():
                         train(epoch, X_train, mask_train, Y_train, args.batch_size, args.seq_len, len(vocab), char_vocab_size, args)
                         #val_acc = evaluate(X_valid, mask_valid, Y_valid, args.batch_size, args.seq_len, len(vocab), args)
                         #test_acc = evaluate(X_test, mask_test, Y_test, args.batch_size, args.seq_len, len(vocab), args)
-                        val_precision, val_recall, val_acc, val_f05 = check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
-                        test_precision, test_recall, test_acc, test_f05 = check_performance(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
+                        val_precision, val_recall, val_acc, val_f05, val_real_precision, val_real_recall, val_real_acc, val_real_f05, val_non_precision, val_non_recall, val_non_acc, val_non_f05 \ 
+                            = check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
+                        test_precision, test_recall, test_acc, test_f05, test_real_precision, test_real_recall, test_real_acc, test_real_f05, test_non_precision, test_non_recall, test_non_acc, test_non_f05 \
+                            = check_performance(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
                         message = ('-' * 89
                                 +  '\n| end of epoch {:3d} | time: {:5.4f}s | valid precision {:5.4f} | valid recall {:5.4f} | valid accuracy {:5.4f} | valid F0.5 {:5.4f} | '.format(
                                     epoch, (time.time() - epoch_start_time), val_precision, val_recall, val_acc, val_f05)
+                                +  '\n| end of epoch {:3d} | time: {:5.4f}s | valid real-word precision {:5.4f} | valid real-word recall {:5.4f} | valid real-word accuracy {:5.4f} | valid real-word F0.5 {:5.4f} | '.format(
+                                    epoch, (time.time() - epoch_start_time), val_real_precision, val_real_recall, val_real_acc, val_real_f05)
+                                +  '\n| end of epoch {:3d} | time: {:5.4f}s | valid non-word precision {:5.4f} | valid non-word recall {:5.4f} | valid non-word accuracy {:5.4f} | valid non-word F0.5 {:5.4f} | '.format(
+                                    epoch, (time.time() - epoch_start_time), val_non_precision, val_non_recall, val_non_acc, val_non_f05)
                                 +  '\n| end of epoch {:3d} | time: {:5.4f}s | test precision {:5.4f} | test recall {:5.4f} | test accuracy {:5.4f} | test F0.5 {:5.4f} | '.format(
                                     epoch, (time.time() - epoch_start_time), test_precision, test_recall, test_acc, test_f05)
+                                +  '\n| end of epoch {:3d} | time: {:5.4f}s | test real-word precision {:5.4f} | test real-word recall {:5.4f} | test real-word accuracy {:5.4f} | test real-word F0.5 {:5.4f} | '.format(
+                                    epoch, (time.time() - epoch_start_time), test_real_precision, test_real_recall, test_real_acc, test_real_f05)
+                                +  '\n| end of epoch {:3d} | time: {:5.4f}s | test non-word precision {:5.4f} | test non-word recall {:5.4f} | test non-word accuracy {:5.4f} | test non-word F0.5 {:5.4f} | '.format(
+                                    epoch, (time.time() - epoch_start_time), test_non_precision, test_non_recall, test_non_acc, test_non_f05)
                                 + '-' * 89)
                         output_s(message, message_filename)
 
