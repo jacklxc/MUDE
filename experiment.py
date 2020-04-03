@@ -247,7 +247,7 @@ def check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_to
 
         non_precision, non_recall, non_accuracy, non_F_score = scores(non_TP, non_FP, non_FN, non_TN, beta = 0.5)
 
-        return precision, recall, accuracy, F_score, real_precision, real_recall, real_accuracy, real_F_score, non_precision, non_recall, non_accuracy, non_F_scores
+        return precision, recall, accuracy, F_score, real_precision, real_recall, real_accuracy, real_F_score, non_precision, non_recall, non_accuracy, non_F_score
     except ZeroDivisionError:
         print("Division by zero")
         return 0, 0, 0, 0
@@ -288,7 +288,7 @@ def main():
 
 
     base_path = os.path.dirname(os.path.realpath(__file__))
-    text_data_dir = os.path.join(base_path,'../missplelling/data/')
+    text_data_dir = os.path.join(base_path, '../misspelling/data/')
     output_dir = os.path.join(base_path,'output/')
 
 
