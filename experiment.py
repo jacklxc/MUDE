@@ -386,10 +386,8 @@ def main():
                         train(epoch, X_train, mask_train, Y_train, args.batch_size, args.seq_len, len(vocab), char_vocab_size, args)
                         #val_acc = evaluate(X_valid, mask_valid, Y_valid, args.batch_size, args.seq_len, len(vocab), args)
                         #test_acc = evaluate(X_test, mask_test, Y_test, args.batch_size, args.seq_len, len(vocab), args)
-                        val_precision, val_recall, val_acc, val_f05, val_real_precision, val_real_recall, val_real_acc, val_real_f05, val_non_precision, val_non_recall, val_non_acc, val_non_f05 \ 
-                            = check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
-                        test_precision, test_recall, test_acc, test_f05, test_real_precision, test_real_recall, test_real_acc, test_real_f05, test_non_precision, test_non_recall, test_non_acc, test_non_f05 \
-                            = check_performance(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
+                        val_precision, val_recall, val_acc, val_f05, val_real_precision, val_real_recall, val_real_acc, val_real_f05, val_non_precision, val_non_recall, val_non_acc, val_non_f05 = check_performance(X_valid, mask_valid, Y_valid, valid_noise_tokens, valid_tokens, id2vocab, len(vocab), args.seq_len, args)
+                        test_precision, test_recall, test_acc, test_f05, test_real_precision, test_real_recall, test_real_acc, test_real_f05, test_non_precision, test_non_recall, test_non_acc, test_non_f05 = check_performance(X_test, mask_test, Y_test, test_noise_tokens, test_tokens, id2vocab, len(vocab), args.seq_len, args)
                         message = ('-' * 89
                                 +  '\n| end of epoch {:3d} | time: {:5.4f}s | valid precision {:5.4f} | valid recall {:5.4f} | valid accuracy {:5.4f} | valid F0.5 {:5.4f} | '.format(
                                     epoch, (time.time() - epoch_start_time), val_precision, val_recall, val_acc, val_f05)
